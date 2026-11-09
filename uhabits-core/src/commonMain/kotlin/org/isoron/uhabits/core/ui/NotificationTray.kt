@@ -64,7 +64,7 @@ open class NotificationTray(
     open fun show(habit: Habit, date: LocalDate, reminderTime: Long) {
         val data = NotificationData(date, reminderTime)
         active[habit] = data
-        taskRunner.execute(ShowNotificationTask(habit, data))
+        taskRunner.execute(ShowNotificationTask(habit, data, isNew = true))
     }
 
     open fun startListening() {
@@ -107,8 +107,11 @@ open class NotificationTray(
     }
 
     internal class NotificationData(val date: LocalDate, val reminderTime: Long)
-    private inner class ShowNotificationTask(private val habit: Habit, data: NotificationData) :
-        Task {
+    private inner class ShowNotificationTask(
+        private val habit: Habit,
+        data: NotificationData,
+        private val isNew: Boolean = false
+    ) : Task {
         var isCompleted = false
         private val date: LocalDate = data.date
         private val reminderTime: Long = data.reminderTime
@@ -134,6 +137,12 @@ open class NotificationTray(
             if (!shouldShowReminderToday()) {
                 systemTray.log("Habit ${habit.id} not supposed to run today. Skipping.")
                 return
+            }
+            if (isNew && preferences.nagIntervalMinutes > 0) {
+                // Nag mode: a fresh notification each time, so the phone and
+                // any paired watch alert again instead of silently updating.
+                // reshow() (sticky after a swipe, settings changes) is unchanged.
+                systemTray.removeNotification(getNotificationId(habit))
             }
             systemTray.showNotification(
                 habit,

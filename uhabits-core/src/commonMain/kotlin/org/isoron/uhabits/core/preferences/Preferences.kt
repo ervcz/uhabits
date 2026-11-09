@@ -158,9 +158,25 @@ open class Preferences(private val storage: Storage) {
         for (l in listeners) l.onNotificationsChanged()
     }
 
+    // Nag mode overrides sticky: Garmin watches (and possibly other
+    // wearables) do not receive ongoing notifications, so sticky repeats
+    // would never reach the wrist. The repeats bring the reminder back anyway.
     open fun shouldMakeNotificationsSticky(): Boolean {
-        return storage.getBoolean("pref_sticky_notifications", false)
+        return storage.getBoolean("pref_sticky_notifications", false) &&
+            nagIntervalMinutes <= 0
     }
+
+    /**
+     * Nag mode: minutes between repeats of a reminder until the habit is
+     * done, or 0 for off. Stored as a string, as ListPreference writes it.
+     */
+    open var nagIntervalMinutes: Int
+        get() = storage.getString("pref_nag_interval", "0").toIntOrNull() ?: 0
+        set(value) {
+            storage.putString("pref_nag_interval", value.toString())
+            // Sticky depends on it: reshow active reminders with the new flag.
+            for (l in listeners) l.onNotificationsChanged()
+        }
 
     open var isCheckmarkSequenceReversed: Boolean
         get() {

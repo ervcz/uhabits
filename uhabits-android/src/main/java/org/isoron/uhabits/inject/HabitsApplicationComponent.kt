@@ -99,9 +99,10 @@ abstract class HabitsApplicationComponent(
         sys: IntentScheduler,
         commandRunner: CommandRunner,
         habitList: HabitList,
-        widgetPreferences: WidgetPreferences
+        widgetPreferences: WidgetPreferences,
+        preferences: Preferences
     ): ReminderScheduler =
-        ReminderScheduler(commandRunner, habitList, sys, widgetPreferences)
+        ReminderScheduler(commandRunner, habitList, sys, widgetPreferences, preferences)
 
     @AppScope
     @Provides

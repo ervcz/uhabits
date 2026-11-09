@@ -48,6 +48,9 @@ class ReminderController(
         reminderTime: Long
     ) {
         notificationTray.show(habit, date, reminderTime)
+        // Nag mode: queue the next repeat before rescheduling, so the
+        // snooze time it sets is what scheduleAll() picks up.
+        reminderScheduler.nag(habit, date)
         reminderScheduler.scheduleAll()
     }
 

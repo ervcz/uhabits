@@ -169,6 +169,14 @@
     <string name="hide_archived">Hide archived</string>
     <string name="sticky_notifications">Make notifications sticky</string>
     <string name="sticky_notifications_description">Prevents notifications from being swiped away.</string>
+    <string name="nag_interval">Repeat reminders until done</string>
+    <string name="nag_interval_off">Off</string>
+    <string name="nag_interval_1">Every minute</string>
+    <string name="nag_interval_2">Every 2 minutes</string>
+    <string name="nag_interval_5">Every 5 minutes</string>
+    <string name="nag_interval_10">Every 10 minutes</string>
+    <string name="nag_interval_15">Every 15 minutes</string>
+    <string name="nag_interval_30">Every 30 minutes</string>
     <string name="led_notifications">Notification light</string>
     <string name="led_notifications_description">Shows a blinking light for reminders. Only available in phones with LED notification lights.</string>
     <string name="repair_database">Repair database</string>

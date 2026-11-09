@@ -107,6 +107,17 @@ class PreferencesTest : BaseUnitTest() {
     }
 
     @Test
+    fun testNagModeOverridesSticky() {
+        assertEquals(0, prefs.nagIntervalMinutes)
+        prefs.setNotificationsSticky(true)
+        prefs.nagIntervalMinutes = 5
+        assertEquals(5, prefs.nagIntervalMinutes)
+        assertFalse(prefs.shouldMakeNotificationsSticky())
+        prefs.nagIntervalMinutes = 0
+        assertTrue(prefs.shouldMakeNotificationsSticky())
+    }
+
+    @Test
     fun testAppVersionAndLaunch() {
         assertEquals(0, prefs.lastAppVersion)
         prefs.lastAppVersion = 23

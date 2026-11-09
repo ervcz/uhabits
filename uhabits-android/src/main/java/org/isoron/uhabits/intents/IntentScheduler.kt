@@ -20,6 +20,7 @@
 package org.isoron.uhabits.intents
 
 import android.app.AlarmManager
+import android.app.AlarmManager.AlarmClockInfo
 import android.app.AlarmManager.RTC
 import android.app.AlarmManager.RTC_WAKEUP
 import android.app.PendingIntent
@@ -47,7 +48,12 @@ class IntentScheduler(
     private val manager =
         context.getSystemService(ALARM_SERVICE) as AlarmManager
 
-    private fun schedule(timestamp: Long, intent: PendingIntent, alarmType: Int): SchedulerResult {
+    private fun schedule(
+        timestamp: Long,
+        intent: PendingIntent,
+        alarmType: Int,
+        showIntent: PendingIntent? = null
+    ): SchedulerResult {
         val now = System.currentTimeMillis()
         Log.d("IntentScheduler", "timestamp=$timestamp now=$now")
         if (timestamp < now) {
@@ -61,6 +67,14 @@ class IntentScheduler(
             Log.e("IntentScheduler", "No permission to schedule exact alarms")
             return SchedulerResult.IGNORED
         }
+        if (showIntent != null) {
+            // Alarm-clock alarms are never deferred by Doze, unlike
+            // setExactAndAllowWhileIdle, which may wait 10+ minutes when the
+            // phone is idle: too slow for a nag every minute or two. The cost
+            // is an alarm icon in the status bar while a nag is pending.
+            manager.setAlarmClock(AlarmClockInfo(timestamp, showIntent), intent)
+            return SchedulerResult.OK
+        }
         manager.setExactAndAllowWhileIdle(alarmType, timestamp, intent)
         return SchedulerResult.OK
     }
@@ -68,11 +82,13 @@ class IntentScheduler(
     override fun scheduleShowReminder(
         reminderTime: Long,
         habit: Habit,
-        timestamp: Long
+        timestamp: Long,
+        urgent: Boolean
     ): SchedulerResult {
         val intent = pendingIntents.showReminder(habit, reminderTime, timestamp)
         logReminderScheduled(habit, reminderTime)
-        return schedule(reminderTime, intent, RTC_WAKEUP)
+        val showIntent = if (urgent) pendingIntents.showHabit(habit) else null
+        return schedule(reminderTime, intent, RTC_WAKEUP, showIntent)
     }
 
     override fun scheduleWidgetUpdate(updateTime: Long): SchedulerResult {

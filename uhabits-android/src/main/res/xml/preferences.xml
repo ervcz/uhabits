@@ -106,6 +106,15 @@
                 android:title="@string/sticky_notifications"
                 app:iconSpaceReserved="false" />
 
+        <ListPreference
+                android:defaultValue="0"
+                android:entries="@array/nag_interval_entries"
+                android:entryValues="@array/nag_interval_values"
+                android:key="pref_nag_interval"
+                android:summary="%s"
+                android:title="@string/nag_interval"
+                app:iconSpaceReserved="false" />
+
         <Preference
                 android:key="reminderCustomize"
                 android:summary="@string/customize_notification_summary"
