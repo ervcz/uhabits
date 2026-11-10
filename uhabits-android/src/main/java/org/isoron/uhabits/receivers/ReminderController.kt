@@ -48,8 +48,6 @@ class ReminderController(
         reminderTime: Long
     ) {
         notificationTray.show(habit, date, reminderTime)
-        // Nag mode: queue the next repeat before rescheduling, so the
-        // snooze time it sets is what scheduleAll() picks up.
         reminderScheduler.nag(habit, date)
         reminderScheduler.scheduleAll()
     }
@@ -65,7 +63,6 @@ class ReminderController(
 
     fun onSnoozeTimePicked(habit: Habit?, hour: Int, minute: Int) {
         val time: Long = DateUtils.getUpcomingTimeInMillis(hour, minute)
-        // Stored as a snooze, so a later reschedule keeps it.
         reminderScheduler.snoozeUntil(habit!!, time)
         notificationTray.cancel(habit)
     }

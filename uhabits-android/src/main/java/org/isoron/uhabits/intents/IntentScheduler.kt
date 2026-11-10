@@ -68,14 +68,8 @@ class IntentScheduler(
             return SchedulerResult.IGNORED
         }
         if (showIntent != null) {
-            // Alarm-clock alarms are never deferred by Doze, unlike
-            // setExactAndAllowWhileIdle, which may wait 10+ minutes when the
-            // phone is idle: too slow for a nag every minute or two. Also
-            // during Do Not Disturb: a paired watch may still alert.
-            //
-            // Costs: an alarm icon in the status bar while a nag is pending,
-            // and a Do Not Disturb schedule set to "end at the next alarm"
-            // ends early if a nag falls inside it.
+            // Unlike setExactAndAllowWhileIdle, never deferred by Doze (which
+            // may wait 10+ minutes). Costs an alarm icon while a nag is pending.
             manager.setAlarmClock(AlarmClockInfo(timestamp, showIntent), intent)
             return SchedulerResult.OK
         }

@@ -117,10 +117,7 @@ open class NotificationTray(
         private val reminderTime: Long = data.reminderTime
 
         override suspend fun doInBackground() {
-            // The day the reminder is about: "today" can be stale when the
-            // process outlives midnight, and a nag after midnight (midnight
-            // delay on) is still about the day before.
-            isCompleted = habit.isCompletedOn(date)
+            isCompleted = habit.isCompletedOn(date) // "today" may be stale
         }
 
         override fun onPostExecute() {
@@ -142,9 +139,7 @@ open class NotificationTray(
                 return
             }
             if (isNew && preferences.nagIntervalMinutes > 0) {
-                // Nag mode: a fresh notification each time, so the phone and
-                // any paired watch alert again instead of silently updating.
-                // reshow() (sticky after a swipe, settings changes) is unchanged.
+                // A fresh notification, so the phone and a paired watch alert again.
                 systemTray.removeNotification(getNotificationId(habit))
             }
             systemTray.showNotification(

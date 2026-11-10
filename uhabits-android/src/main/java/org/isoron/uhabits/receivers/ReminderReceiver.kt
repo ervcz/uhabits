@@ -47,8 +47,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val appComponent = app.component
         val habits = appComponent.habitList
         val reminderController = appComponent.reminderController
-        // The process may have outlived midnight; "today" is only refreshed
-        // while the habit list is open.
+        // The process may have outlived midnight.
         setToday(computeToday(appComponent.preferences.midnightDelayHours, 0))
         Log.i(TAG, String.format("Received intent: %s", intent.toString()))
         var habit: Habit? = null
