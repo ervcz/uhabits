@@ -41,71 +41,142 @@ open class ReminderScheduler(
     private val sys: SystemScheduler,
     private val widgetPreferences: WidgetPreferences,
     private val preferences: Preferences
-) : CommandRunner.Listener {
+) : CommandRunner.Listener, Preferences.Listener {
     @Synchronized
     override fun onCommandFinished(command: Command) {
         if (command is CreateRepetitionCommand) {
-            stopNaggingIfDone(command.habit)
+            onRepetitionChanged(command.habit, command.date)
             return
         }
         if (command is ChangeHabitColorCommand) return
         scheduleAll()
     }
 
+    // Nag mode switched on or off, or its interval changed: apply it now
+    // rather than at each habit's next reminder.
+    @Synchronized
+    override fun onNagIntervalChanged() {
+        sys.log("ReminderScheduler", "Nag interval changed. Rescheduling.")
+        for (habit in habitList.getFiltered(HabitMatcher.WITH_ALARM)) {
+            if (!restartNag(habit)) schedule(habit)
+        }
+    }
+
     /**
-     * Nag mode: when the reminder for [date] has been shown and the habit is
+     * Nag mode: when the reminder for [date] has gone off and the habit is
      * still not done, show it again every few minutes until it is done or the
-     * day ends. The repeat rides on the snooze time, so it survives app
-     * restarts and reboots like a manual snooze does.
+     * day ends. The repeat is stored like a snooze, together with [date], so
+     * it survives app restarts and reboots.
      *
      * Returns false when there is nothing to nag about.
      */
     @Synchronized
     open fun nag(habit: Habit, date: LocalDate): Boolean {
+        val id = habit.id ?: return false
         val next = nextNagTime(habit, date) ?: return false
-        sys.log("ReminderScheduler", "Nagging habit=${habit.id} again at $next")
-        widgetPreferences.setSnoozeTime(habit.id!!, next)
+        sys.log("ReminderScheduler", "Nagging habit=$id about $date again at $next")
+        widgetPreferences.setNagTime(id, next, date.daysSince2000)
         schedule(habit)
         return true
     }
 
     /**
-     * When the habit for [date] should be shown again, or null if nag mode is
-     * off, the habit is done (or skipped) or no longer due that day, or the
-     * next repeat would fall on another day.
+     * When the habit should be shown again for [date], or null if it should
+     * not be (see [isNagDue]) or the next repeat would fall after the end of
+     * that day.
      */
     open fun nextNagTime(habit: Habit, date: LocalDate): Long? {
-        val minutes = preferences.nagIntervalMinutes
-        if (minutes <= 0) return null
-        if (habit.id == null || habit.isArchived) return null
-        val reminder = habit.reminder ?: return null
-        // An "at most" target is met by doing nothing, so there is nothing to
-        // nag about; its reminder still shows once, as before.
-        if (habit.isNumerical && habit.targetType == NumericalHabitType.AT_MOST) return null
-        val weekday = (date.dayOfWeek.daysSinceSunday + 1) % 7
-        if (!reminder.days.toArray()[weekday]) return null
-        if (habit.isCompletedOn(date)) return null
-        val next = now() + minutes * 60_000L
-        if (dayOf(next) != date) return null
+        if (!isNagDue(habit, date)) return null
+        val next = now() + preferences.nagIntervalMinutes * DateUtils.MINUTE_LENGTH
+        if (next >= nagEnd(habit, date)) return null
         return next
     }
 
+    /**
+     * Whether the habit should be nagging about [date] right now: nag mode is
+     * on, the habit's reminder for that day has gone off, the habit is due
+     * that day and not done (or skipped), and the day is not over.
+     */
+    open fun isNagDue(habit: Habit, date: LocalDate): Boolean {
+        if (preferences.nagIntervalMinutes <= 0) return false
+        if (habit.id == null || habit.isArchived) return false
+        val reminder = habit.reminder ?: return false
+        // An "at most" target is met by doing nothing, so there is nothing to
+        // nag about; its reminder still shows once, as before.
+        if (habit.isNumerical && habit.targetType == NumericalHabitType.AT_MOST) return false
+        val weekday = (date.dayOfWeek.daysSinceSunday + 1) % 7
+        if (!reminder.days.toArray()[weekday]) return false
+        if (habit.isCompletedOn(date)) return false
+        val now = now()
+        return reminderTimeOn(habit, date) <= now && now < nagEnd(habit, date)
+    }
+
+    // The nag about [date] ends when that day ends, which is a few hours
+    // after midnight when "midnight delay" is on, or at the next reminder,
+    // whichever comes first. The next reminder then takes over.
+    private fun nagEnd(habit: Habit, date: LocalDate): Long {
+        val nextDay = date.plus(1)
+        val dayEnd = DateUtils.applyTimezone(
+            nextDay.unixTime + preferences.midnightDelayHours * DateUtils.HOUR_LENGTH
+        )
+        return minOf(dayEnd, reminderTimeOn(habit, nextDay))
+    }
+
+    private fun reminderTimeOn(habit: Habit, date: LocalDate): Long {
+        val reminder = habit.reminder!!
+        return DateUtils.applyTimezone(
+            date.unixTime +
+                reminder.hour * DateUtils.HOUR_LENGTH +
+                reminder.minute * DateUtils.MINUTE_LENGTH
+        )
+    }
+
+    // The day of the habit's most recent reminder.
+    private fun lastReminderDay(habit: Habit): LocalDate? {
+        if (habit.reminder == null) return null
+        val now = now()
+        val today = calendarDay(now)
+        return if (reminderTimeOn(habit, today) <= now) today else today.minus(1)
+    }
+
+    private fun nagDayOf(id: Long): LocalDate? = widgetPreferences.getNagDay(id)?.let { LocalDate(it) }
+
     // Checking the habit (from the app, a widget, the notification or a
     // watch) ends the nag at once instead of letting one more alarm fire.
-    // Nag mode off: unchanged upstream behaviour.
-    private fun stopNaggingIfDone(habit: Habit) {
+    // Unchecking it, or lowering a numerical value below the target, after
+    // the nag has stopped starts it again, if that day's nag is still due
+    // (which also means it is the latest reminder's day). A pending manual
+    // snooze is left alone. Nag mode off: upstream behaviour.
+    private fun onRepetitionChanged(habit: Habit, date: LocalDate) {
         if (preferences.nagIntervalMinutes <= 0) return
         val id = habit.id ?: return
-        val snoozed = widgetPreferences.getSnoozeTime(id)
-        if (snoozed == 0L || nextNagTime(habit, dayOf(snoozed)) != null) return
-        sys.log("ReminderScheduler", "Habit $id is done. Stopping the nag.")
-        widgetPreferences.removeSnoozeTime(id)
-        schedule(habit)
+        val nagDay = nagDayOf(id)
+        if (nagDay != null) {
+            if (isNagDue(habit, nagDay)) return
+            sys.log("ReminderScheduler", "Habit $id is done. Stopping the nag.")
+            widgetPreferences.removeSnoozeTime(id)
+            schedule(habit)
+        } else if (widgetPreferences.getSnoozeTime(id) <= now()) {
+            nag(habit, date)
+        }
+    }
+
+    // Applies the current nag interval to [habit]: restarts its nag, or
+    // starts one when its last reminder went off unanswered. A pending manual
+    // snooze is left alone. Returns false if the habit is not nagging.
+    private fun restartNag(habit: Habit): Boolean {
+        val id = habit.id ?: return false
+        var date = nagDayOf(id)
+        if (date == null) {
+            if (widgetPreferences.getSnoozeTime(id) > now()) return false
+            date = lastReminderDay(habit) ?: return false
+        }
+        return nag(habit, date)
     }
 
     private fun now(): Long = DateUtils.applyTimezone(DateUtils.getLocalTime())
 
-    private fun dayOf(time: Long): LocalDate =
+    private fun calendarDay(time: Long): LocalDate =
         LocalDate.fromUnixTime(DateUtils.getStartOfDay(DateUtils.removeTimezone(time)))
 
     @Synchronized
@@ -118,44 +189,63 @@ open class ReminderScheduler(
             sys.log("ReminderScheduler", "habit=" + habit.id + " has no reminder. Skipping.")
             return
         }
+        val id = habit.id!!
         var reminderTime = DateUtils.getUpcomingTimeInMillis(
             habit.reminder!!.hour,
             habit.reminder!!.minute
         )
         var urgent = false
-        val snoozeReminderTime = widgetPreferences.getSnoozeTime(habit.id!!)
+        var date: LocalDate? = null
+        val snoozeReminderTime = widgetPreferences.getSnoozeTime(id)
         if (snoozeReminderTime != 0L) {
             val now = now()
-            sys.log("ReminderScheduler", "Habit ${habit.id} has been snoozed until $snoozeReminderTime")
-            if (snoozeReminderTime > now) {
+            val nagDay = nagDayOf(id)
+            sys.log("ReminderScheduler", "Habit $id has been snoozed until $snoozeReminderTime (nag day $nagDay)")
+            // A nag repeat ends when the habit is done, the reminder is
+            // moved later or off that day, nag mode is switched off, or the
+            // day is over. A repeat missed while the phone was off or the app
+            // was killed resumes. A manual snooze works as upstream, except
+            // that in nag mode a missed one resumes nagging too.
+            val day = nagDay ?: calendarDay(snoozeReminderTime)
+            if (nagDay != null && !isNagDue(habit, nagDay)) {
+                sys.log("ReminderScheduler", "Nag no longer due. Discarding.")
+                widgetPreferences.removeSnoozeTime(id)
+            } else if (snoozeReminderTime > now) {
                 sys.log("ReminderScheduler", "Snooze time is in the future. Accepting.")
                 reminderTime = snoozeReminderTime
                 urgent = preferences.nagIntervalMinutes > 0
+                date = nagDay
             } else {
-                // Nag mode: a repeat missed while the phone was off or the
-                // app was killed resumes instead of waiting for tomorrow.
-                val resumed = nextNagTime(habit, dayOf(snoozeReminderTime))
+                val resumed = nextNagTime(habit, day)
                 if (resumed != null) {
                     sys.log("ReminderScheduler", "Missed a nag. Resuming at $resumed.")
-                    widgetPreferences.setSnoozeTime(habit.id!!, resumed)
+                    widgetPreferences.setNagTime(id, resumed, day.daysSince2000)
                     reminderTime = resumed
                     urgent = true
+                    date = day
                 } else {
                     sys.log("ReminderScheduler", "Snooze time is in the past. Discarding.")
-                    widgetPreferences.removeSnoozeTime(habit.id!!)
+                    widgetPreferences.removeSnoozeTime(id)
                 }
             }
         }
-        scheduleAtTime(habit, reminderTime, urgent)
+        scheduleAtTime(habit, reminderTime, urgent, date)
     }
 
     /**
      * [urgent] asks the system to deliver the alarm on time even in battery
      * saving (Doze), where ordinary alarms may be held back for 10+ minutes.
-     * Used for nag repeats only.
+     * Used in nag mode only. [date] is the day the reminder is about, by
+     * default the day of [reminderTime]; a nag after midnight (with midnight
+     * delay on) is still about the day before.
      */
     @Synchronized
-    open fun scheduleAtTime(habit: Habit, reminderTime: Long, urgent: Boolean = false) {
+    open fun scheduleAtTime(
+        habit: Habit,
+        reminderTime: Long,
+        urgent: Boolean = false,
+        date: LocalDate? = null
+    ) {
         sys.log("ReminderScheduler", "Scheduling alarm for habit=" + habit.id)
         if (!habit.hasReminder()) {
             sys.log("ReminderScheduler", "habit=" + habit.id + " has no reminder. Skipping.")
@@ -165,7 +255,8 @@ open class ReminderScheduler(
             sys.log("ReminderScheduler", "habit=" + habit.id + " is archived. Skipping.")
             return
         }
-        val timestamp = DateUtils.getStartOfDayWithOffset(DateUtils.removeTimezone(reminderTime), 0, 0)
+        val timestamp = date?.unixTime
+            ?: DateUtils.getStartOfDayWithOffset(DateUtils.removeTimezone(reminderTime), 0, 0)
         sys.log("ReminderScheduler", "reminderTime=$reminderTime removeTimezone=${DateUtils.removeTimezone(reminderTime)} timestamp=$timestamp")
         sys.scheduleShowReminder(reminderTime, habit, timestamp, urgent)
     }
@@ -185,18 +276,24 @@ open class ReminderScheduler(
     @Synchronized
     open fun startListening() {
         commandRunner.addListener(this)
+        preferences.addListener(this)
     }
 
     @Synchronized
     open fun stopListening() {
         commandRunner.removeListener(this)
+        preferences.removeListener(this)
     }
 
     @Synchronized
     open fun snoozeReminder(habit: Habit, minutes: Long) {
-        val now = DateUtils.applyTimezone(DateUtils.getLocalTime())
-        val snoozedUntil = now + minutes * 60 * 1000
-        widgetPreferences.setSnoozeTime(habit.id!!, snoozedUntil)
+        snoozeUntil(habit, now() + minutes * DateUtils.MINUTE_LENGTH)
+    }
+
+    /** Manual snooze to [time]. In nag mode, nagging resumes after it. */
+    @Synchronized
+    open fun snoozeUntil(habit: Habit, time: Long) {
+        widgetPreferences.setSnoozeTime(habit.id!!, time)
         schedule(habit)
     }
 

@@ -60,11 +60,32 @@ open class WidgetPreferences(private val storage: Preferences.Storage) {
         return format("snooze-%06d", id.toInt())
     }
 
-    open fun removeSnoozeTime(id: Long) {
-        storage.putLong(getSnoozeKey(id), 0)
+    private fun getNagDayKey(id: Long): String {
+        return format("nag-day-%06d", id.toInt())
     }
 
+    open fun removeSnoozeTime(id: Long) {
+        storage.putLong(getSnoozeKey(id), 0)
+        storage.remove(getNagDayKey(id))
+    }
+
+    /** A manual snooze. */
     open fun setSnoozeTime(id: Long, time: Long) {
         storage.putLong(getSnoozeKey(id), time)
+        storage.remove(getNagDayKey(id))
+    }
+
+    /**
+     * Nag mode: the snooze time is a repeat of the reminder for [day]
+     * (days since 2000), not a manual snooze.
+     */
+    open fun setNagTime(id: Long, time: Long, day: Int) {
+        storage.putLong(getSnoozeKey(id), time)
+        storage.putInt(getNagDayKey(id), day)
+    }
+
+    /** The day a pending nag repeat is about, or null for a manual snooze. */
+    open fun getNagDay(id: Long): Int? {
+        return storage.getInt(getNagDayKey(id), -1).takeIf { it >= 0 }
     }
 }

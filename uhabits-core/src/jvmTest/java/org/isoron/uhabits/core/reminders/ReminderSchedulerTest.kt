@@ -64,6 +64,8 @@ class ReminderSchedulerTest : BaseUnitTest() {
         super.setUp()
         habit = fixtures.createEmptyHabit()
         habit.id = habitId
+        // A mocked snooze is a manual one, never a nag repeat.
+        every { widgetPreferences.getNagDay(any()) } returns null
         reminderScheduler =
             ReminderScheduler(commandRunner, habitList, sys, widgetPreferences, preferences)
         setFixedTimeZone(TimeZone.getTimeZone("GMT-4"))
@@ -194,41 +196,24 @@ class ReminderSchedulerTest : BaseUnitTest() {
     }
 
     @Test
-    fun testNag_stopsWhenDone() {
+    fun testNag_stopsWhenDoneOrSkipped() {
         setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
         val scheduler = nagScheduler(minutes = 1)
         mark(habit, Entry.YES_MANUAL)
         assertFalse(scheduler.nag(habit, nagDay))
-    }
-
-    @Test
-    fun testNag_stopsWhenSkipped() {
-        setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
-        val scheduler = nagScheduler(minutes = 1)
         mark(habit, Entry.SKIP)
         assertFalse(scheduler.nag(habit, nagDay))
     }
 
     @Test
-    fun testNag_keepsGoingAfterNo() {
+    fun testNag_onlyOnReminderDays() {
         setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
         val scheduler = nagScheduler(minutes = 1)
-        mark(habit, Entry.NO)
-        assertTrue(scheduler.nag(habit, nagDay))
-    }
-
-    @Test
-    fun testNag_stopsAtMidnight() {
-        setFixedLocalTime(unixTime(2015, 1, 26, 23, 59))
-        val scheduler = nagScheduler(minutes = 2)
-        assertNull(scheduler.nextNagTime(habit, nagDay))
-    }
-
-    @Test
-    fun testNag_notOnDaysWithoutReminder() {
-        setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
-        val scheduler = nagScheduler(minutes = 1)
-        habit.reminder = Reminder(8, 30, WeekdayList(0))
+        // nagDay is Thursday 26 February 2015 (unixTime months start at 0):
+        // index 5, Saturday first. Hardcoded, not computed like the code does.
+        habit.reminder = Reminder(8, 30, WeekdayList(BooleanArray(7) { it == 5 }))
+        assertEquals(unixTime(2015, 1, 26, 17, 1), scheduler.nextNagTime(habit, nagDay))
+        habit.reminder = Reminder(8, 30, WeekdayList(BooleanArray(7) { it != 5 }))
         assertNull(scheduler.nextNagTime(habit, nagDay))
     }
 
@@ -255,43 +240,169 @@ class ReminderSchedulerTest : BaseUnitTest() {
 
     @Test
     fun testNag_resumesAfterMissedRepeat() {
-        // The phone was off when the 12:50 repeat was due.
-        setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
+        // Day ends at 3 AM. The phone was off when the 00:30 repeat was due:
+        // it resumes, still about the 26th.
+        setFixedLocalTime(unixTime(2015, 1, 27, 1, 0))
         val scheduler = nagScheduler(minutes = 1)
-        nagPrefs.setSnoozeTime(habitId, unixTime(2015, 1, 26, 16, 50))
+        preferences.isMidnightDelayEnabled = true
+        nagPrefs.setNagTime(habitId, unixTime(2015, 1, 27, 4, 30), nagDay.daysSince2000)
         scheduler.schedule(habit)
-        val resumed = unixTime(2015, 1, 26, 17, 1)
+        val resumed = unixTime(2015, 1, 27, 5, 1)
         assertEquals(resumed, nagPrefs.getSnoozeTime(habitId))
         verify { sys.scheduleShowReminder(resumed, habit, unixTime(2015, 1, 26), true) }
     }
 
     @Test
-    fun testNag_missedRepeatFromYesterdayIsDropped() {
-        setFixedLocalTime(unixTime(2015, 1, 27, 9, 0))
-        val scheduler = nagScheduler(minutes = 1)
-        nagPrefs.setSnoozeTime(habitId, unixTime(2015, 1, 26, 22, 0))
+    fun testNag_pendingRepeatIsDroppedOnceItsDayIsOver() {
+        // A repeat at 00:01 about the 26th; then "day ends at 3 AM" is
+        // switched off, so the 26th is over.
+        setFixedLocalTime(unixTime(2015, 1, 26, 23, 59))
+        val scheduler = nagScheduler(minutes = 2)
+        preferences.isMidnightDelayEnabled = true
+        assertTrue(scheduler.nag(habit, nagDay))
+        setFixedLocalTime(unixTime(2015, 1, 27, 0, 0))
+        preferences.isMidnightDelayEnabled = false
         scheduler.schedule(habit)
         assertEquals(0L, nagPrefs.getSnoozeTime(habitId))
-        verify {
-            sys.scheduleShowReminder(
-                unixTime(2015, 1, 28, 12, 30), habit, unixTime(2015, 1, 28), false
-            )
-        }
+    }
+
+    private fun nagCommand(value: Int) =
+        CreateRepetitionCommand(habitList, habit, nagDay, value, "").also { it.run() }
+
+    private fun listeningNagScheduler(minutes: Int): ReminderScheduler {
+        val scheduler = nagScheduler(minutes)
+        habitList.add(habit)
+        scheduler.startListening()
+        return scheduler
     }
 
     @Test
-    fun testNag_checkingTheHabitCancelsThePendingRepeat() {
+    fun testNag_checkingStopsItAndUncheckingRestartsIt() {
         setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
         val scheduler = nagScheduler(minutes = 1)
         assertTrue(scheduler.nag(habit, nagDay))
-        val command = CreateRepetitionCommand(habitList, habit, nagDay, Entry.YES_MANUAL, "")
-        command.run()
-        scheduler.onCommandFinished(command)
+        scheduler.onCommandFinished(nagCommand(Entry.YES_MANUAL))
         assertEquals(0L, nagPrefs.getSnoozeTime(habitId))
         // Replaced by tomorrow's ordinary reminder (same alarm slot per habit).
         verify {
             sys.scheduleShowReminder(
                 unixTime(2015, 1, 27, 12, 30), habit, unixTime(2015, 1, 27), false
+            )
+        }
+        scheduler.onCommandFinished(nagCommand(Entry.NO))
+        assertEquals(unixTime(2015, 1, 26, 17, 1), nagPrefs.getSnoozeTime(habitId))
+        assertEquals(nagDay.daysSince2000, nagPrefs.getNagDay(habitId))
+    }
+
+    @Test
+    fun testNag_answeringNoKeepsThePendingRepeat() {
+        setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
+        val scheduler = nagScheduler(minutes = 2)
+        assertTrue(scheduler.nag(habit, nagDay))
+        setFixedLocalTime(unixTime(2015, 1, 26, 13, 1))
+        scheduler.onCommandFinished(nagCommand(Entry.NO))
+        assertEquals(unixTime(2015, 1, 26, 17, 2), nagPrefs.getSnoozeTime(habitId))
+    }
+
+    @Test
+    fun testNag_uncheckingKeepsAManualSnooze() {
+        setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
+        val scheduler = nagScheduler(minutes = 1)
+        scheduler.snoozeReminder(habit, 60)
+        scheduler.onCommandFinished(nagCommand(Entry.NO))
+        assertEquals(unixTime(2015, 1, 26, 18, 0), nagPrefs.getSnoozeTime(habitId))
+    }
+
+    @Test
+    fun testNag_reminderMovedLaterStopsIt() {
+        setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
+        val scheduler = nagScheduler(minutes = 1)
+        assertTrue(scheduler.nag(habit, nagDay))
+        habit.reminder = Reminder(20, 0, WeekdayList.EVERY_DAY)
+        scheduler.schedule(habit)
+        assertEquals(0L, nagPrefs.getSnoozeTime(habitId))
+        verify {
+            sys.scheduleShowReminder(
+                unixTime(2015, 1, 27, 0, 0), habit, unixTime(2015, 1, 26), false
+            )
+        }
+    }
+
+    @Test
+    fun testNag_midnightDelayKeepsItGoingAfterMidnight() {
+        setFixedLocalTime(unixTime(2015, 1, 26, 23, 59))
+        val scheduler = nagScheduler(minutes = 2)
+        preferences.isMidnightDelayEnabled = true
+        assertTrue(scheduler.nag(habit, nagDay))
+        // 00:01 local, still about the 26th.
+        verify {
+            sys.scheduleShowReminder(
+                unixTime(2015, 1, 27, 4, 1), habit, unixTime(2015, 1, 26), true
+            )
+        }
+        setFixedLocalTime(unixTime(2015, 1, 27, 2, 0))
+        assertEquals(unixTime(2015, 1, 27, 6, 2), scheduler.nextNagTime(habit, nagDay))
+        setFixedLocalTime(unixTime(2015, 1, 27, 2, 59))
+        assertNull(scheduler.nextNagTime(habit, nagDay))
+    }
+
+    @Test
+    fun testNag_endsAtTheNextReminder() {
+        setFixedLocalTime(unixTime(2015, 1, 27, 0, 59))
+        val scheduler = nagScheduler(minutes = 2)
+        preferences.isMidnightDelayEnabled = true
+        habit.reminder = Reminder(1, 0, WeekdayList.EVERY_DAY)
+        assertNull(scheduler.nextNagTime(habit, nagDay))
+    }
+
+    @Test
+    fun testNag_switchingOffStopsIt() {
+        setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
+        val scheduler = listeningNagScheduler(minutes = 2)
+        assertTrue(scheduler.nag(habit, nagDay))
+        preferences.nagIntervalMinutes = 0
+        assertEquals(0L, nagPrefs.getSnoozeTime(habitId))
+        verify {
+            sys.scheduleShowReminder(
+                unixTime(2015, 1, 27, 12, 30), habit, unixTime(2015, 1, 27), false
+            )
+        }
+    }
+
+    @Test
+    fun testNag_switchingOnStartsItForTheLatestUnansweredReminder() {
+        // Day ends at 3 AM: at 01:00 the 26th's reminder is the latest, and
+        // the 26th is not over yet.
+        setFixedLocalTime(unixTime(2015, 1, 27, 1, 0))
+        listeningNagScheduler(minutes = 0)
+        preferences.isMidnightDelayEnabled = true
+        preferences.nagIntervalMinutes = 5
+        assertEquals(unixTime(2015, 1, 27, 5, 5), nagPrefs.getSnoozeTime(habitId))
+        assertEquals(nagDay.daysSince2000, nagPrefs.getNagDay(habitId))
+    }
+
+    @Test
+    fun testNag_changingTheIntervalAppliesAtOnce() {
+        setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
+        val scheduler = listeningNagScheduler(minutes = 30)
+        assertTrue(scheduler.nag(habit, nagDay))
+        preferences.nagIntervalMinutes = 1
+        assertEquals(unixTime(2015, 1, 26, 17, 1), nagPrefs.getSnoozeTime(habitId))
+    }
+
+    @Test
+    fun testNag_snoozingDuringANagIsAManualSnooze() {
+        // ...so changing the interval keeps it instead of restarting the nag.
+        setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
+        val scheduler = listeningNagScheduler(minutes = 30)
+        assertTrue(scheduler.nag(habit, nagDay))
+        scheduler.snoozeReminder(habit, 60)
+        preferences.nagIntervalMinutes = 1
+        assertEquals(unixTime(2015, 1, 26, 18, 0), nagPrefs.getSnoozeTime(habitId))
+        assertNull(nagPrefs.getNagDay(habitId))
+        verify {
+            sys.scheduleShowReminder(
+                unixTime(2015, 1, 26, 18, 0), habit, unixTime(2015, 1, 26), true
             )
         }
     }

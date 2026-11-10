@@ -65,7 +65,8 @@ class ReminderController(
 
     fun onSnoozeTimePicked(habit: Habit?, hour: Int, minute: Int) {
         val time: Long = DateUtils.getUpcomingTimeInMillis(hour, minute)
-        reminderScheduler.scheduleAtTime(habit!!, time)
+        // Stored as a snooze, so a later reschedule keeps it.
+        reminderScheduler.snoozeUntil(habit!!, time)
         notificationTray.cancel(habit)
     }
 

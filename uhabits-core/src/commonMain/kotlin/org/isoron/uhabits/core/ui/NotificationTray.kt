@@ -117,7 +117,10 @@ open class NotificationTray(
         private val reminderTime: Long = data.reminderTime
 
         override suspend fun doInBackground() {
-            isCompleted = habit.isCompletedToday()
+            // The day the reminder is about: "today" can be stale when the
+            // process outlives midnight, and a nag after midnight (midnight
+            // delay on) is still about the day before.
+            isCompleted = habit.isCompletedOn(date)
         }
 
         override fun onPostExecute() {

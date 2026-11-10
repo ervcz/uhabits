@@ -18,6 +18,7 @@
  */
 package org.isoron.uhabits.receivers
 
+import dev.mokkery.matcher.any
 import dev.mokkery.mock
 import dev.mokkery.verify
 import dev.mokkery.verifyNoMoreCalls
@@ -60,7 +61,17 @@ class ReminderControllerTest : BaseAndroidJVMTest() {
         val date = LocalDate(2015, 1, 25)
         controller.onShowReminder(habit, date, 456)
         verify { notificationTray.show(habit, date, 456) }
+        verify { reminderScheduler.nag(habit, date) }
         verify { reminderScheduler.scheduleAll() }
+    }
+
+    @Test
+    fun testOnSnoozeTimePicked_isStoredAsASnooze() {
+        // Not just an alarm, which the next reschedule would replace.
+        val habit = fixtures.createEmptyHabit()
+        controller.onSnoozeTimePicked(habit, 20, 0)
+        verify { reminderScheduler.snoozeUntil(habit, any()) }
+        verify { notificationTray.cancel(habit) }
     }
 
     @Test

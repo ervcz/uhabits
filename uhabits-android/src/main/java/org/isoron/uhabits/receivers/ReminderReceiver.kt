@@ -26,7 +26,9 @@ import android.os.Build
 import android.os.Build.VERSION.SDK_INT
 import android.util.Log
 import org.isoron.platform.time.LocalDate
+import org.isoron.platform.time.computeToday
 import org.isoron.platform.time.getToday
+import org.isoron.platform.time.setToday
 import org.isoron.uhabits.HabitsApplication
 import org.isoron.uhabits.core.models.Habit
 
@@ -45,6 +47,9 @@ class ReminderReceiver : BroadcastReceiver() {
         val appComponent = app.component
         val habits = appComponent.habitList
         val reminderController = appComponent.reminderController
+        // The process may have outlived midnight; "today" is only refreshed
+        // while the habit list is open.
+        setToday(computeToday(appComponent.preferences.midnightDelayHours, 0))
         Log.i(TAG, String.format("Received intent: %s", intent.toString()))
         var habit: Habit? = null
         val todayMillis = getToday().unixTime

@@ -176,6 +176,7 @@ open class Preferences(private val storage: Storage) {
             storage.putString("pref_nag_interval", value.toString())
             // Sticky depends on it: reshow active reminders with the new flag.
             for (l in listeners) l.onNotificationsChanged()
+            for (l in listeners) l.onNagIntervalChanged()
         }
 
     open var isCheckmarkSequenceReversed: Boolean
@@ -266,6 +267,7 @@ open class Preferences(private val storage: Storage) {
         fun onCheckmarkSequenceChanged() {}
         fun onNotificationsChanged() {}
         fun onQuestionMarksChanged() {}
+        fun onNagIntervalChanged() {}
     }
 
     interface Storage {
