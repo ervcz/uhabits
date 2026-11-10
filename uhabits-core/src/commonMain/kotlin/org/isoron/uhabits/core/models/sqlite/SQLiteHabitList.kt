@@ -268,7 +268,8 @@ class SQLiteHabitList(private val modelFactory: ModelFactory) : HabitList() {
                 targetType = habit.targetType.value,
                 unit = habit.unit,
                 uuid = habit.uuid,
-                category = habit.category
+                category = habit.category,
+                repeatUntilDone = if (habit.repeatUntilDone) 1 else 0
             )
         }
 
@@ -287,6 +288,7 @@ class SQLiteHabitList(private val modelFactory: ModelFactory) : HabitList() {
             habit.position = data.position
             habit.uuid = data.uuid
             habit.category = data.category
+            habit.repeatUntilDone = data.repeatUntilDone != 0
             if (data.reminderHour != null && data.reminderMin != null) {
                 habit.reminder = Reminder(
                     data.reminderHour!!,

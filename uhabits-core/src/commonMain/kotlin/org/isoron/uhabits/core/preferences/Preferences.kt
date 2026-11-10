@@ -23,6 +23,7 @@ import org.isoron.platform.time.LocalDate
 import org.isoron.platform.time.getFirstWeekdayNumberAccordingToLocale
 import org.isoron.platform.utils.StringUtils.Companion.joinLongs
 import org.isoron.platform.utils.StringUtils.Companion.splitLongs
+import org.isoron.uhabits.core.models.Habit
 import org.isoron.uhabits.core.models.HabitList
 import org.isoron.uhabits.core.ui.ThemeSwitcher
 import kotlin.math.max
@@ -158,22 +159,22 @@ open class Preferences(private val storage: Storage) {
         for (l in listeners) l.onNotificationsChanged()
     }
 
-    // Nag mode overrides sticky: some watches (e.g. Garmin) never receive
-    // ongoing notifications, and the repeats bring the reminder back anyway.
     open fun shouldMakeNotificationsSticky(): Boolean {
-        return storage.getBoolean("pref_sticky_notifications", false) &&
-            nagIntervalMinutes <= 0
+        return storage.getBoolean("pref_sticky_notifications", false)
     }
 
-    // Minutes between repeats of a reminder until the habit is done; 0 is off.
+    // "Repeat until done" overrides sticky: some watches (e.g. Garmin) never
+    // receive ongoing notifications, and the repeats bring the reminder back.
+    open fun shouldMakeNotificationsSticky(habit: Habit): Boolean {
+        return shouldMakeNotificationsSticky() && !habit.repeatUntilDone
+    }
+
+    // Minutes between repeats for habits set to "repeat until done".
     open var nagIntervalMinutes: Int
-        get() = storage.getString("pref_nag_interval", "0").toIntOrNull() ?: 0
+        get() = storage.getString("pref_nag_interval", "5").toIntOrNull() ?: 5
         set(value) {
             storage.putString("pref_nag_interval", value.toString())
-            for (l in listeners) {
-                l.onNotificationsChanged()
-                l.onNagIntervalChanged()
-            }
+            for (l in listeners) l.onNagIntervalChanged()
         }
 
     open var isCheckmarkSequenceReversed: Boolean

@@ -169,8 +169,8 @@
     <string name="hide_archived">Hide archived</string>
     <string name="sticky_notifications">Make notifications sticky</string>
     <string name="sticky_notifications_description">Prevents notifications from being swiped away.</string>
-    <string name="nag_interval">Repeat reminders until done</string>
-    <string name="nag_interval_off">Off</string>
+    <string name="nag_interval">Repeat until done: interval</string>
+    <string name="repeat_until_done">Repeat until done</string>
     <string name="nag_interval_1">Every minute</string>
     <string name="nag_interval_2">Every 2 minutes</string>
     <string name="nag_interval_5">Every 5 minutes</string>

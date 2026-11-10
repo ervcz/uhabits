@@ -51,9 +51,10 @@ class NotificationTrayTest : BaseUnitTest() {
         override fun log(msg: String) {}
     }
 
-    private fun showReminder(doneOn: LocalDate? = null) {
+    private fun showReminder(doneOn: LocalDate? = null, repeatUntilDone: Boolean = false) {
         val habit = fixtures.createEmptyHabit()
         habit.reminder = Reminder(8, 30, WeekdayList.EVERY_DAY)
+        habit.repeatUntilDone = repeatUntilDone
         if (doneOn != null) {
             habit.originalEntries.add(Entry(doneOn, Entry.YES_MANUAL))
             habit.recompute()
@@ -81,8 +82,7 @@ class NotificationTrayTest : BaseUnitTest() {
     fun testShow_nagModePostsAFreshNotification() {
         // Removing it first makes the phone and a paired watch alert again,
         // instead of silently updating the notification already there.
-        preferences.nagIntervalMinutes = 1
-        showReminder()
+        showReminder(repeatUntilDone = true)
         assertEquals(listOf("remove", "show $today"), calls)
     }
 }

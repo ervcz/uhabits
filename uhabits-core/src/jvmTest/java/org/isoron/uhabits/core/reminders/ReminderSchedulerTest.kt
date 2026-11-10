@@ -32,6 +32,7 @@ import org.isoron.platform.time.setToday
 import org.isoron.platform.time.unixTime
 import org.isoron.uhabits.core.BaseUnitTest
 import org.isoron.uhabits.core.commands.CreateRepetitionCommand
+import org.isoron.uhabits.core.commands.EditHabitCommand
 import org.isoron.uhabits.core.models.Entry
 import org.isoron.uhabits.core.models.Habit
 import org.isoron.uhabits.core.models.NumericalHabitType
@@ -171,7 +172,13 @@ class ReminderSchedulerTest : BaseUnitTest() {
         setToday(nagDay)
         preferences.nagIntervalMinutes = minutes
         habit.reminder = Reminder(8, 30, WeekdayList.EVERY_DAY)
+        habit.repeatUntilDone = true
         return ReminderScheduler(commandRunner, habitList, sys, nagPrefs, preferences)
+    }
+
+    private fun editHabit(scheduler: ReminderScheduler, change: Habit.() -> Unit) {
+        val modified = fixtures.createEmptyHabit().apply { copyFrom(habit) }.apply(change)
+        scheduler.onCommandFinished(EditHabitCommand(habitList, habitId, modified).also { it.run() })
     }
 
     private fun mark(h: Habit, value: Int) {
@@ -180,11 +187,11 @@ class ReminderSchedulerTest : BaseUnitTest() {
     }
 
     @Test
-    fun testNag_offByDefault() {
-        setFixedLocalTime(unixTime(2015, 1, 26, 13, 0))
-        habit.reminder = Reminder(8, 30, WeekdayList.EVERY_DAY)
-        assertEquals(0, preferences.nagIntervalMinutes)
-        assertFalse(reminderScheduler.nag(habit, nagDay))
+    fun testNag_onlyForHabitsSetToRepeatUntilDone() {
+        assertFalse(fixtures.createEmptyHabit().repeatUntilDone)
+        val scheduler = nagScheduler(minutes = 1)
+        habit.repeatUntilDone = false
+        assertFalse(scheduler.nag(habit, nagDay))
     }
 
     @Test
@@ -363,10 +370,11 @@ class ReminderSchedulerTest : BaseUnitTest() {
     }
 
     @Test
-    fun testNag_switchingOffStopsIt() {
-        val scheduler = listeningNagScheduler(minutes = 2)
+    fun testNag_turningTheSwitchOffStopsIt() {
+        val scheduler = nagScheduler(minutes = 2)
+        habitList.add(habit)
         assertTrue(scheduler.nag(habit, nagDay))
-        preferences.nagIntervalMinutes = 0
+        editHabit(scheduler) { repeatUntilDone = false }
         assertEquals(0L, nagPrefs.getSnoozeTime(habitId))
         verify {
             sys.scheduleShowReminder(
@@ -379,12 +387,14 @@ class ReminderSchedulerTest : BaseUnitTest() {
     }
 
     @Test
-    fun testNag_switchingOnStartsItForTheLatestUnansweredReminder() {
+    fun testNag_turningTheSwitchOnStartsItForTheLatestUnansweredReminder() {
         // Day ends at 3 AM: at 01:00 the 26th's reminder is the latest, and
         // the 26th is not over yet.
-        listeningNagScheduler(minutes = 0, at = unixTime(2015, 1, 27, 1, 0))
+        val scheduler = nagScheduler(minutes = 5, at = unixTime(2015, 1, 27, 1, 0))
+        habit.repeatUntilDone = false
+        habitList.add(habit)
         preferences.isMidnightDelayEnabled = true
-        preferences.nagIntervalMinutes = 5
+        editHabit(scheduler) { repeatUntilDone = true }
         assertEquals(unixTime(2015, 1, 27, 5, 5), nagPrefs.getSnoozeTime(habitId))
         assertEquals(nagDay.daysSince2000, nagPrefs.getNagDay(habitId))
     }

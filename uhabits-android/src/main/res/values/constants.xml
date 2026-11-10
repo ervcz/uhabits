@@ -96,7 +96,6 @@
     </string-array>
 
     <string-array name="nag_interval_entries">
-        <item>@string/nag_interval_off</item>
         <item>@string/nag_interval_1</item>
         <item>@string/nag_interval_2</item>
         <item>@string/nag_interval_5</item>
@@ -106,7 +105,6 @@
     </string-array>
 
     <string-array name="nag_interval_values" translatable="false">
-        <item>0</item>
         <item>1</item>
         <item>2</item>
         <item>5</item>

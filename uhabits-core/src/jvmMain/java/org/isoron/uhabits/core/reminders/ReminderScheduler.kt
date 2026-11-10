@@ -26,6 +26,7 @@ import org.isoron.uhabits.core.commands.ChangeHabitColorCommand
 import org.isoron.uhabits.core.commands.Command
 import org.isoron.uhabits.core.commands.CommandRunner
 import org.isoron.uhabits.core.commands.CreateRepetitionCommand
+import org.isoron.uhabits.core.commands.EditHabitCommand
 import org.isoron.uhabits.core.models.Habit
 import org.isoron.uhabits.core.models.HabitList
 import org.isoron.uhabits.core.models.HabitMatcher
@@ -49,26 +50,30 @@ open class ReminderScheduler(
         }
         if (command is ChangeHabitColorCommand) return
         scheduleAll()
+        // Switching "repeat until done" on starts nagging about an unanswered reminder.
+        if (command is EditHabitCommand) {
+            val habit = habitList.getById(command.habitId) ?: return
+            if (habit.hasReminder()) startNag(habit, lastReminderDay(habit))
+        }
     }
 
     // Checking a habit ends its nag at once; unchecking it restarts the nag.
     private fun onRepetitionChanged(habit: Habit, date: LocalDate) {
         val id = habit.id ?: return
-        if (nagDayOf(id) != null) {
-            schedule(habit)
-        } else if (widgetPreferences.getSnoozeTime(id) <= now()) {
-            nag(habit, date)
-        }
+        if (nagDayOf(id) != null) schedule(habit) else startNag(habit, date)
     }
 
-    // Applies a new nag interval at once, leaving a manual snooze alone.
+    // Starts nagging about [date], unless a manual snooze is pending.
+    private fun startNag(habit: Habit, date: LocalDate) {
+        if (widgetPreferences.getSnoozeTime(habit.id!!) <= now()) nag(habit, date)
+    }
+
+    // Re-times running nags with the new interval.
     @Synchronized
     override fun onNagIntervalChanged() {
         for (habit in habitList.getFiltered(HabitMatcher.WITH_ALARM)) {
-            val id = habit.id ?: continue
-            val day = nagDayOf(id)
-                ?: if (widgetPreferences.getSnoozeTime(id) > now()) null else lastReminderDay(habit)
-            if (day == null || !nag(habit, day)) schedule(habit)
+            val day = nagDayOf(habit.id ?: continue) ?: continue
+            if (!nag(habit, day)) schedule(habit)
         }
     }
 
@@ -91,10 +96,11 @@ open class ReminderScheduler(
         return next.takeIf { it < nagEnd(habit, date) }
     }
 
-    // Nag mode is on, the reminder for [date] has gone off, the habit is due
-    // and not done that day, and the day is not over.
+    // The habit repeats until done, its reminder for [date] has gone off, it is
+    // due and not done that day, and the day is not over.
     open fun isNagDue(habit: Habit, date: LocalDate): Boolean {
-        if (preferences.nagIntervalMinutes <= 0 || habit.isArchived) return false
+        if (!habit.repeatUntilDone || preferences.nagIntervalMinutes <= 0) return false
+        if (habit.isArchived) return false
         val reminder = habit.reminder ?: return false
         // An "at most" target is met by doing nothing.
         if (habit.isNumerical && habit.targetType == NumericalHabitType.AT_MOST) return false
@@ -152,9 +158,9 @@ open class ReminderScheduler(
             if (snoozeReminderTime > now) {
                 sys.log("ReminderScheduler", "Snooze time is in the future. Accepting.")
                 reminderTime = snoozeReminderTime
-                urgent = preferences.nagIntervalMinutes > 0
+                urgent = habit.repeatUntilDone
             } else {
-                // Nag mode: a snooze missed while the phone was off resumes nagging.
+                // Repeat until done: a snooze missed while the phone was off resumes nagging.
                 if (nag(habit, calendarDay(snoozeReminderTime))) return
                 sys.log("ReminderScheduler", "Snooze time is in the past. Discarding.")
                 widgetPreferences.removeSnoozeTime(habit.id!!)

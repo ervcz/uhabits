@@ -107,7 +107,7 @@
                 app:iconSpaceReserved="false" />
 
         <ListPreference
-                android:defaultValue="0"
+                android:defaultValue="5"
                 android:entries="@array/nag_interval_entries"
                 android:entryValues="@array/nag_interval_values"
                 android:key="pref_nag_interval"

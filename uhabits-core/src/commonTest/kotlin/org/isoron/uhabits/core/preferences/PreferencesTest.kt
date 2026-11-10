@@ -107,14 +107,13 @@ class PreferencesTest : BaseUnitTest() {
     }
 
     @Test
-    fun testNagModeOverridesSticky() {
-        assertEquals(0, prefs.nagIntervalMinutes)
-        prefs.setNotificationsSticky(true)
-        prefs.nagIntervalMinutes = 5
+    fun testRepeatUntilDoneOverridesSticky() {
         assertEquals(5, prefs.nagIntervalMinutes)
-        assertFalse(prefs.shouldMakeNotificationsSticky())
-        prefs.nagIntervalMinutes = 0
-        assertTrue(prefs.shouldMakeNotificationsSticky())
+        prefs.setNotificationsSticky(true)
+        val habit = fixtures.createEmptyHabit()
+        assertTrue(prefs.shouldMakeNotificationsSticky(habit))
+        habit.repeatUntilDone = true
+        assertFalse(prefs.shouldMakeNotificationsSticky(habit))
     }
 
     @Test

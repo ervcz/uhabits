@@ -55,12 +55,14 @@ class HabitRepositoryTest {
         data.name = "Exercise daily"
         data.freqNum = 1
         data.freqDen = 1
+        data.repeatUntilDone = 1
         repo.update(data)
 
         val updated = repo.findAll()
         assertEquals(1, updated.size)
         assertEquals("Exercise daily", updated[0].name)
         assertEquals(1, updated[0].freqDen)
+        assertEquals(1, updated[0].repeatUntilDone)
 
         db.close()
     }
@@ -176,7 +178,8 @@ class HabitRepositoryTest {
             targetType = 1,
             unit = "minutes",
             uuid = "550e8400-e29b-41d4-a716-446655440000",
-            category = "Health"
+            category = "Health",
+            repeatUntilDone = 1
         )
         original.id = repo.insert(original)
 
@@ -199,6 +202,7 @@ class HabitRepositoryTest {
         assertEquals(original.unit, loaded.unit)
         assertEquals(original.uuid, loaded.uuid)
         assertEquals(original.category, loaded.category)
+        assertEquals(original.repeatUntilDone, loaded.repeatUntilDone)
         assertNotNull(loaded.id)
         assertEquals(original.id, loaded.id)
 

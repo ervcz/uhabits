@@ -138,7 +138,7 @@ open class NotificationTray(
                 systemTray.log("Habit ${habit.id} not supposed to run today. Skipping.")
                 return
             }
-            if (isNew && preferences.nagIntervalMinutes > 0) {
+            if (isNew && habit.repeatUntilDone) {
                 // A fresh notification, so the phone and a paired watch alert again.
                 systemTray.removeNotification(getNotificationId(habit))
             }

@@ -118,6 +118,7 @@ class EditHabitActivity : AppCompatActivity() {
             binding.questionInput.setText(habit.question)
             binding.notesInput.setText(habit.description)
             binding.categoryInput.setText(habit.category)
+            binding.repeatUntilDoneSwitch.isChecked = habit.repeatUntilDone
             binding.unitInput.setText(habit.unit)
             binding.targetInput.setText(habit.targetValue.toString())
         } else {
@@ -276,6 +277,7 @@ class EditHabitActivity : AppCompatActivity() {
         habit.description = binding.notesInput.text.trim().toString()
         habit.category = binding.categoryInput.text.trim().toString()
         habit.color = color
+        habit.repeatUntilDone = binding.repeatUntilDoneSwitch.isChecked
         if (reminderHour >= 0) {
             habit.reminder = Reminder(reminderHour, reminderMin, reminderDays)
         } else {
@@ -334,6 +336,9 @@ class EditHabitActivity : AppCompatActivity() {
             binding.reminderDivider.visibility = View.VISIBLE
             binding.reminderDatePicker.text = reminderDays.toFormattedString(this)
         }
+        val repeatVisibility = if (reminderHour < 0) View.GONE else View.VISIBLE
+        binding.repeatUntilDoneDivider.visibility = repeatVisibility
+        binding.repeatUntilDoneSwitch.visibility = repeatVisibility
     }
 
     @SuppressLint("StringFormatMatches")
