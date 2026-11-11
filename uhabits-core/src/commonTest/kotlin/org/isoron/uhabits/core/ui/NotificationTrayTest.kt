@@ -44,23 +44,25 @@ class NotificationTrayTest : BaseUnitTest() {
             habit: Habit,
             notificationId: Int,
             date: LocalDate,
-            reminderTime: Long
+            reminderTime: Long,
+            silent: Boolean
         ) {
-            calls.add("show $date")
+            calls.add(if (silent) "show $date silently" else "show $date")
         }
         override fun log(msg: String) {}
     }
 
+    private val tray by lazy { NotificationTray(taskRunner, commandRunner, preferences, systemTray) }
+    private val habit by lazy { fixtures.createEmptyHabit() }
+
     private fun showReminder(doneOn: LocalDate? = null, repeatUntilDone: Boolean = false) {
-        val habit = fixtures.createEmptyHabit()
         habit.reminder = Reminder(8, 30, WeekdayList.EVERY_DAY)
         habit.repeatUntilDone = repeatUntilDone
         if (doneOn != null) {
             habit.originalEntries.add(Entry(doneOn, Entry.YES_MANUAL))
             habit.recompute()
         }
-        NotificationTray(taskRunner, commandRunner, preferences, systemTray)
-            .show(habit, today, 0)
+        tray.show(habit, today, 0)
     }
 
     @Test
@@ -84,5 +86,13 @@ class NotificationTrayTest : BaseUnitTest() {
         // instead of silently updating the notification already there.
         showReminder(repeatUntilDone = true)
         assertEquals(listOf("remove", "show $today"), calls)
+    }
+
+    @Test
+    fun testReshow_afterASwipeIsSilent() {
+        showReminder(repeatUntilDone = true)
+        calls.clear()
+        tray.reshow(habit)
+        assertEquals(listOf("show $today silently"), calls)
     }
 }

@@ -58,6 +58,19 @@ class PendingIntentFactory(
             FLAG_IMMUTABLE or FLAG_UPDATE_CURRENT
         )
 
+    // Mutable: the system adds the text typed into the notification.
+    fun enterValue(habit: Habit, date: LocalDate): PendingIntent =
+        getBroadcast(
+            context,
+            4,
+            Intent(context, WidgetReceiver::class.java).apply {
+                data = Uri.parse(habit.uriString)
+                action = WidgetReceiver.ACTION_ENTER_VALUE
+                putExtra("timestamp", date.unixTime)
+            },
+            getIntentTemplateFlags() or FLAG_UPDATE_CURRENT
+        )
+
     fun dismissNotification(habit: Habit): PendingIntent =
         getBroadcast(
             context,

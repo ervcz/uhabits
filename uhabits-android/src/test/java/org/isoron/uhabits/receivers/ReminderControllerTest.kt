@@ -18,6 +18,8 @@
  */
 package org.isoron.uhabits.receivers
 
+import dev.mokkery.answering.returns
+import dev.mokkery.every
 import dev.mokkery.matcher.any
 import dev.mokkery.mock
 import dev.mokkery.verify
@@ -52,6 +54,15 @@ class ReminderControllerTest : BaseAndroidJVMTest() {
         verifyNoMoreCalls(reminderScheduler)
         verifyNoMoreCalls(notificationTray)
         verifyNoMoreCalls(preferences)
+    }
+
+    @Test
+    fun testOnDismiss_stickyBringsARepeatingReminderBack() {
+        // Never ongoing (watches skip those), so a swipe is undone instead.
+        every { preferences.shouldMakeNotificationsSticky() } returns true
+        val habit = fixtures.createEmptyHabit().apply { repeatUntilDone = true }
+        controller.onDismiss(habit)
+        verify { notificationTray.reshow(habit) }
     }
 
     @Test

@@ -96,11 +96,14 @@ open class NotificationTray(
 
     interface SystemTray {
         fun removeNotification(notificationId: Int)
+
+        // [silent]: shown again (after a swipe, a settings change), not a new reminder.
         fun showNotification(
             habit: Habit,
             notificationId: Int,
             date: LocalDate,
-            reminderTime: Long
+            reminderTime: Long,
+            silent: Boolean = false
         )
 
         fun log(msg: String)
@@ -146,7 +149,8 @@ open class NotificationTray(
                 habit,
                 getNotificationId(habit),
                 date,
-                reminderTime
+                reminderTime,
+                silent = !isNew
             )
         }
 

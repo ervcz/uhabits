@@ -32,6 +32,7 @@ import androidx.core.app.NotificationCompat.Action
 import androidx.core.app.NotificationCompat.Builder
 import androidx.core.app.NotificationCompat.WearableExtender
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.RemoteInput
 import me.tatarka.inject.annotations.Inject
 import org.isoron.platform.time.LocalDate
 import org.isoron.uhabits.R
@@ -41,6 +42,7 @@ import org.isoron.uhabits.core.preferences.Preferences
 import org.isoron.uhabits.core.ui.NotificationTray
 import org.isoron.uhabits.inject.AppContext
 import org.isoron.uhabits.intents.PendingIntentFactory
+import org.isoron.uhabits.receivers.WidgetReceiver
 
 @Inject
 @AppScope
@@ -66,10 +68,11 @@ class AndroidNotificationTray(
         habit: Habit,
         notificationId: Int,
         date: LocalDate,
-        reminderTime: Long
+        reminderTime: Long,
+        silent: Boolean
     ) {
         val notificationManager = NotificationManagerCompat.from(context)
-        val notification = buildNotification(habit, reminderTime, date)
+        val notification = buildNotification(habit, reminderTime, date, silent = silent)
         createAndroidNotificationChannel(context)
         try {
             notificationManager.notify(notificationId, notification)
@@ -83,7 +86,8 @@ class AndroidNotificationTray(
                 habit,
                 reminderTime,
                 date,
-                disableSound = true
+                disableSound = true,
+                silent = silent
             )
             notificationManager.notify(notificationId, n)
         }
@@ -94,7 +98,8 @@ class AndroidNotificationTray(
         habit: Habit,
         reminderTime: Long,
         date: LocalDate,
-        disableSound: Boolean = false
+        disableSound: Boolean = false,
+        silent: Boolean = false
     ): Notification {
         val addRepetitionAction = Action(
             R.drawable.ic_action_check,
@@ -108,11 +113,16 @@ class AndroidNotificationTray(
             pendingIntents.removeRepetition(habit, date)
         )
 
-        val enterAction = Action(
+        // Typed straight into the notification, no need to open the app.
+        val enterAction = Action.Builder(
             R.drawable.ic_action_check,
             context.getString(R.string.enter),
-            pendingIntents.showNumberPicker(habit, date)
-        )
+            pendingIntents.enterValue(habit, date)
+        ).addRemoteInput(
+            RemoteInput.Builder(WidgetReceiver.KEY_VALUE)
+                .setLabel(habit.unit.ifBlank { context.getString(R.string.enter) })
+                .build()
+        ).build()
 
         val wearableBg = decodeResource(context.resources, R.drawable.stripe)
 
@@ -132,6 +142,7 @@ class AndroidNotificationTray(
             .setWhen(reminderTime)
             .setShowWhen(true)
             .setOngoing(preferences.shouldMakeNotificationsSticky(habit))
+            .setSilent(silent)
 
         if (habit.isNumerical) {
             wearableExtender.addAction(enterAction)
@@ -145,7 +156,7 @@ class AndroidNotificationTray(
                 .addAction(removeRepetitionAction)
         }
 
-        if (!disableSound) {
+        if (!disableSound && !silent) {
             builder.setSound(ringtoneManager.getURI())
         }
 

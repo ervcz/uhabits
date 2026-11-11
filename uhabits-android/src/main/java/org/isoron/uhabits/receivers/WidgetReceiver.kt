@@ -22,6 +22,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import androidx.core.app.RemoteInput
 import me.tatarka.inject.annotations.Component
 import org.isoron.platform.time.computeToday
 import org.isoron.platform.time.setFirstWeekday
@@ -103,6 +104,12 @@ class WidgetReceiver : BroadcastReceiver() {
                         data.date
                     )
                 }
+                ACTION_ENTER_VALUE -> {
+                    val text = RemoteInput.getResultsFromIntent(intent)
+                        ?.getCharSequence(KEY_VALUE)?.toString() ?: ""
+                    Log.d(TAG, "onEnterValue habit=${data!!.habit.id} date=${data.date}")
+                    controller.onEnterValue(data.habit, data.date, text)
+                }
                 ACTION_UPDATE_WIDGETS_VALUE -> {
                     setToday(computeToday(prefs.midnightDelayHours, 0))
                     setFirstWeekday(prefs.firstWeekday)
@@ -118,6 +125,8 @@ class WidgetReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_ADD_REPETITION = "org.isoron.uhabits.ACTION_ADD_REPETITION"
         const val ACTION_DISMISS_REMINDER = "org.isoron.uhabits.ACTION_DISMISS_REMINDER"
+        const val ACTION_ENTER_VALUE = "org.isoron.uhabits.ACTION_ENTER_VALUE"
+        const val KEY_VALUE = "value"
         const val ACTION_REMOVE_REPETITION = "org.isoron.uhabits.ACTION_REMOVE_REPETITION"
         const val ACTION_TOGGLE_REPETITION = "org.isoron.uhabits.ACTION_TOGGLE_REPETITION"
         const val ACTION_UPDATE_WIDGETS_VALUE = "org.isoron.uhabits.ACTION_UPDATE_WIDGETS_VALUE"

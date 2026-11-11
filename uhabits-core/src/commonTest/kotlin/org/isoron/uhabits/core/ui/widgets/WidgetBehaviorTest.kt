@@ -20,6 +20,7 @@ package org.isoron.uhabits.core.ui.widgets
 
 import dev.mokkery.answering.returns
 import dev.mokkery.every
+import dev.mokkery.matcher.any
 import dev.mokkery.mock
 import dev.mokkery.resetCalls
 import dev.mokkery.verify
@@ -65,6 +66,22 @@ class WidgetBehaviorTest : BaseUnitTest() {
         }
         verify { notificationTray.cancel(habit) }
         verify(notCalled) { preferences.isSkipEnabled }
+    }
+
+    @Test
+    fun testOnEnterValue() {
+        behavior.onEnterValue(habit, today, " 12,5 ")
+        verify {
+            commandRunner.run(CreateRepetitionCommand(habitList, habit, today, 12500, ""))
+        }
+        verify { notificationTray.cancel(habit) }
+    }
+
+    @Test
+    fun testOnEnterValue_invalidBringsTheNotificationBack() {
+        behavior.onEnterValue(habit, today, "twelve")
+        verify { notificationTray.reshow(habit) }
+        verify(notCalled) { commandRunner.run(any()) }
     }
 
     @Test

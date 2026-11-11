@@ -68,9 +68,11 @@ class ReminderController(
     }
 
     fun onDismiss(habit: Habit) {
-        if (preferences.shouldMakeNotificationsSticky(habit)) {
+        if (preferences.shouldMakeNotificationsSticky()) {
             // This is a workaround to keep sticky notifications non-dismissible in Android 14+.
             // If the notification is dismissed, we immediately reshow it.
+            // Also how "repeat until done" habits stay sticky: they cannot be
+            // ongoing (some watches skip those), so swiping brings them back.
             notificationTray.reshow(habit)
         } else {
             notificationTray.cancel(habit)

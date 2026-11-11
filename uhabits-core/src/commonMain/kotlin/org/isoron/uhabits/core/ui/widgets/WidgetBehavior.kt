@@ -28,6 +28,7 @@ import org.isoron.uhabits.core.models.Habit
 import org.isoron.uhabits.core.models.HabitList
 import org.isoron.uhabits.core.preferences.Preferences
 import org.isoron.uhabits.core.ui.NotificationTray
+import kotlin.math.roundToInt
 
 @Inject
 class WidgetBehavior(
@@ -72,6 +73,16 @@ class WidgetBehavior(
         val currentValue = entry.value
         setValue(habit, date, currentValue - amount, entry.notes)
         notificationTray.cancel(habit)
+    }
+
+    // A value typed into the notification, in the habit's unit ("12.5" or "12,5").
+    // Anything else brings the notification back, so it can be typed again.
+    fun onEnterValue(habit: Habit, date: LocalDate, text: String) {
+        val value = text.trim().replace(',', '.').toDoubleOrNull()
+        if (value == null || value < 0) return notificationTray.reshow(habit)
+        notificationTray.cancel(habit)
+        val entry = habit.originalEntries.get(date)
+        setValue(habit, date, (value * 1000).roundToInt(), entry.notes)
     }
 
     fun setValue(habit: Habit, date: LocalDate, newValue: Int, notes: String) {
